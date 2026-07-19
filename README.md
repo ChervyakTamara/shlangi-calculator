@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Калькулятор стоимости РВД
 
-## Getting Started
+Веб-приложение для расчёта стоимости шлангов высокого давления с фитингами. Данные загружаются из Google Таблиц.
 
-First, run the development server:
+## Возможности
+
+- Выбор типа РВД, DN и длины
+- Автоматический расчёт стоимости РВД и 2 втулок
+- Выбор двух фитингов по типу (Г, 45, 90, Ш) и DN
+- Опция «Геморрой» — работа с фитингом клиента (2 000 ₽)
+- Наценка или скидка в процентах
+- Скачивание отчёта в PDF
+
+## Локальный запуск
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Откройте [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Деплой на Vercel
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Загрузите проект на GitHub
+2. Импортируйте репозиторий на [vercel.com](https://vercel.com)
+3. Vercel автоматически определит Next.js и выполнит сборку
 
-## Learn More
+### Google Таблицы
 
-To learn more about Next.js, take a look at the following resources:
+Таблицы должны быть доступны **«Всем, у кого есть ссылка»** (просмотр):
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Таблица | ID |
+|---------|-----|
+| РВД | `1pri9slkKWLlis1BtgjbyBRQi0x7YJTp9fHj9dWoYvtE` |
+| Фитинги | `1pYookWPBfWMz24_hR72RywDYxdZNYjBagqttqr1NXRg` |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+При необходимости задайте переменные окружения в Vercel:
 
-## Deploy on Vercel
+```
+RVD_SHEET_ID=1pri9slkKWLlis1BtgjbyBRQi0x7YJTp9fHj9dWoYvtE
+FITTINGS_SHEET_ID=1pYookWPBfWMz24_hR72RywDYxdZNYjBagqttqr1NXRg
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Формула расчёта
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+Итого = (цена_за_метр × длина) + цена_2_втулок + фитинг_1 + фитинг_2 ± наценка/скидка
+```
