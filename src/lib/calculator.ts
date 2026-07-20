@@ -40,7 +40,7 @@ export function calculatePrice(
 
   if (input.fitting1Hemorrhoid) {
     fitting1Cost = HEMORRHOID_PRICE;
-    fitting1Label = "Геморрой (работа с фитингом клиента)";
+    fitting1Label = "Работа с фитингом клиента";
   } else if (input.fitting1Id) {
     const fitting = fittings.find((item) => item.id === input.fitting1Id);
     if (fitting) {
@@ -54,7 +54,7 @@ export function calculatePrice(
 
   if (input.fitting2Hemorrhoid) {
     fitting2Cost = HEMORRHOID_PRICE;
-    fitting2Label = "Геморрой (работа с фитингом клиента)";
+    fitting2Label = "Работа с фитингом клиента";
   } else if (input.fitting2Id) {
     const fitting = fittings.find((item) => item.id === input.fitting2Id);
     if (fitting) {

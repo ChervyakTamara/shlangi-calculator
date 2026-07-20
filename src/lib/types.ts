@@ -18,6 +18,17 @@ export interface FittingItem {
 export const FITTING_TYPES = ["Г", "45", "90", "Ш"] as const;
 export type FittingType = (typeof FITTING_TYPES)[number];
 
+export const FITTING_TYPE_LABELS: Record<FittingType, string> = {
+  Г: "Прямой",
+  "45": "45",
+  "90": "90",
+  Ш: "Штуцер",
+};
+
+export function getFittingTypeLabel(type: FittingType | string): string {
+  return FITTING_TYPE_LABELS[type as FittingType] ?? type;
+}
+
 export const HEMORRHOID_PRICE = 2000;
 
 export interface CalculationInput {

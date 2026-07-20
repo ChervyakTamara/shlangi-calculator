@@ -14,7 +14,7 @@ import type {
   FittingType,
   RvdItem,
 } from "@/lib/types";
-import { FITTING_TYPES } from "@/lib/types";
+import { FITTING_TYPES, getFittingTypeLabel } from "@/lib/types";
 
 const fieldClass =
   "w-full border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-500 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500";
@@ -88,7 +88,10 @@ function FittingSection({
           label="Тип фитинга"
           value={fittingType}
           onChange={(value) => onTypeChange(value as FittingType | "")}
-          options={FITTING_TYPES.map((type) => ({ value: type, label: type }))}
+          options={FITTING_TYPES.map((type) => ({
+            value: type,
+            label: getFittingTypeLabel(type),
+          }))}
           placeholder="Выберите тип"
           disabled={disabled || hemorrhoid}
         />
