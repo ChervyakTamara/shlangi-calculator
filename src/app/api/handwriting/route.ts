@@ -26,6 +26,9 @@ export async function POST(request: Request) {
       signal:AbortSignal.timeout(45000),cache:"no-store",
     });
     if (!response.ok) {
+      const failure = await response.json().catch(() => ({}));
+      const detail = String(failure.error?.message || failure.message || "").replace(/Bearer\\s+\\S+|eyJ[a-zA-Z0-9_.-]+|sk-[a-zA-Z0-9_-]+/g, "[redacted]").slice(0,700);
+      console.error("HANDWRITING_GATEWAY", response.status, String(failure.error?.code || ""), detail);
       if ([401,403].includes(response.status)) return reply("Нужно активировать доступ к сервису распознавания в Vercel AI Gateway.",503);
       if (response.status === 402) return reply("В сервисе распознавания закончился доступный баланс.",503);
       return reply("Сервис распознавания временно недоступен. Попробуй позже.",502);
