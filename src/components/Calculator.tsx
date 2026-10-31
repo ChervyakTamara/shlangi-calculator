@@ -18,24 +18,7 @@ import { FITTING_TYPES, getFittingTypeLabel } from "@/lib/types";
 
 import { parseVoiceCommand, type VoiceCommandResult } from "@/lib/voice-command";
 
-interface SpeechRecognitionEventLike {
-  resultIndex: number;
-  results: ArrayLike<{ 0: { transcript: string } }>;
-}
-
-interface SpeechRecognitionLike {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event: { error: string }) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-}
-
-interface SpeechRecognitionConstructor { new(): SpeechRecognitionLike }
-
+import { startSpeechSession, type SpeechRecognitionConstructor } from "@/lib/speech-session";
 
 const fieldClass =
   "w-full border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-500 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500";
@@ -155,12 +138,12 @@ function FittingSection({
 }
 
 export default function Calculator() {
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const stopVoiceRef = useRef<(() => void) | null>(null);
   const [voiceText, setVoiceText] = useState("");
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceError, setVoiceError] = useState("");
   const [voiceApplied, setVoiceApplied] = useState(false);
-  useEffect(() => () => { const recognition = recognitionRef.current; if (recognition) { recognition.onresult = null; recognition.onerror = null; recognition.onend = null; recognition.stop(); } }, []);
+  useEffect(() => () => stopVoiceRef.current?.(), []);
 
   const reportRef = useRef<HTMLDivElement>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -232,26 +215,13 @@ export default function Calculator() {
     }
 
     try {
-      const recognition = new SpeechRecognition();
-      recognition.lang = "ru-RU";
-      recognition.interimResults = true;
-      recognition.continuous = false;
-      recognition.onresult = (event) => {
-        const parts: string[] = [];
-        for (let index = event.resultIndex; index < event.results.length; index += 1) {
-          parts.push(event.results[index][0].transcript);
-        }
-        if (parts.length) setVoiceText(parts.join(" ").trim());
-      };
-      recognition.onerror = (event) => {
-        setVoiceError(event.error === "not-allowed"
-          ? "Разреши доступ к микрофону в настройках браузера."
-          : `Не удалось распознать речь (${event.error}). Попробуй ещё раз или введи текст вручную.`);
-      };
-      recognition.onend = () => setVoiceListening(false);
-      recognitionRef.current = recognition;
+      stopVoiceRef.current?.();
       setVoiceListening(true);
-      recognition.start();
+      stopVoiceRef.current = startSpeechSession(SpeechRecognition, {
+        onText: setVoiceText,
+        onError: setVoiceError,
+        onStop: () => setVoiceListening(false),
+      });
     } catch {
       setVoiceListening(false);
       setVoiceError("Не удалось запустить микрофон. Проверь разрешение доступа и попробуй ещё раз.");
@@ -427,7 +397,7 @@ export default function Calculator() {
             </div>
             <button
               type="button"
-              onClick={voiceListening ? () => recognitionRef.current?.stop() : startVoiceInput}
+              onClick={voiceListening ? () => stopVoiceRef.current?.() : startVoiceInput}
               className={`border px-4 py-2.5 text-sm font-medium transition ${voiceListening ? "border-red-700 bg-red-700 text-white hover:bg-red-800" : "border-neutral-800 bg-neutral-900 text-white hover:bg-neutral-800"}`}
               aria-pressed={voiceListening}
             >
@@ -438,11 +408,11 @@ export default function Calculator() {
             aria-label="Распознанная диктовка параметров РВД"
             value={voiceText}
             onChange={(event) => { setVoiceText(event.target.value); setVoiceApplied(false); setVoiceError(""); }}
-            placeholder="Например: 2СН, DN 20, длина 1,2 метра, ДКОЛ 30 на 2 прямой с двух сторон, наценка 2 процента"
+            placeholder="Например: 2СН, DN 20, длина 1,2 метра, прямой ДКОЛ 30 на 2 прямой ДКОЛ 30 на 2, наценка 2 процента"
             rows={2}
             className="mt-4 w-full resize-y border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-500"
           />
-          {voiceListening && <p className="mt-2 text-sm text-neutral-700" aria-live="polite">Слушаю… Говори параметры РВД.</p>}
+          {voiceListening && <p className="mt-2 text-sm text-neutral-700" aria-live="polite">Слушаю… Можно делать паузы до 5 секунд. Для завершения нажми «Остановить запись».</p>}
           {voiceError && <p role="alert" className="mt-2 text-sm text-red-700">{voiceError}</p>}
           {parsedVoice && (
             <div className="mt-3 space-y-2 text-sm">
