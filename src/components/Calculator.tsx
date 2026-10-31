@@ -1,6 +1,5 @@
 "use client";
 
-import HandwrittenInput from "./HandwrittenInput";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   calculatePrice,
@@ -391,7 +390,7 @@ export default function Calculator() {
         <section className={sectionClass} aria-labelledby="voice-input-title">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 id="voice-input-title" className={sectionTitleClass}>Голос, фото или текст</h2>
+              <h2 id="voice-input-title" className={sectionTitleClass}>Голосовой ввод</h2>
               <p className="max-w-2xl text-sm text-neutral-600">
                 Скажи параметры целиком, затем проверь распознанный текст перед заполнением.
               </p>
@@ -405,7 +404,6 @@ export default function Calculator() {
               {voiceListening ? "Остановить запись" : "🎙️ Диктовать"}
             </button>
           </div>
-          <HandwrittenInput onText={text => { stopVoiceRef.current?.(); setVoiceText(text); setVoiceApplied(false); setVoiceError(""); }} />
           <textarea
             aria-label="Распознанная диктовка параметров РВД"
             value={voiceText}
