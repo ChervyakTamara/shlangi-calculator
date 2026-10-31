@@ -41,10 +41,11 @@ function fittingStandardAliases(standard: string): string[] {
 
 function fittingAngle(text: string, from: number, to: number): FittingType | undefined {
   const nearby = text.slice(from, to);
+  // «Прямой штуцер» is still catalog type Ш, not Г.
+  if (/(?:^|[^а-яa-z])(?:штуцер[а-я]*|ш|ша)(?=$|[^а-яa-z])/u.test(nearby)) return "Ш";
   const explicit = nearby.match(/(?:^|[\s,;])(45|90)(?:\s*(?:°|градус(?:а|ов)?|град))?(?=$|[\s,;.])/u);
   if (explicit) return explicit[1] as FittingType;
   if (/(?:прямой|прямое|прямая|прямые|ровный)/.test(nearby)) return "Г";
-  if (/(?:штуцер|штуцерный)/.test(nearby)) return "Ш";
   return undefined;
 }
 
