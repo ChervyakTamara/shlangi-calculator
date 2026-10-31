@@ -102,7 +102,10 @@ function findFittingMatches(text: string, database: Database, dn: number): {
 }
 
 export function parseVoiceCommand(transcript: string, database: Database): VoiceCommandResult {
-  const text = normalize(transcript);
+  const text = normalize(transcript).replace(
+    /([a-z]+)\s*\(\s*(г|ш|45|90)\s*\)\s*(\d+(?:[.,]\d+)?\s*(?:[xх×*]|на)\s*\d+(?:[.,]\d+)?)(?:\s*\(\s*(45|90)\s*\))?/gu,
+    (_,standard,type,size,angle) => `${angle || (type === "г" ? "прямой" : type)} ${standard} ${size}`,
+  );
   const result: VoiceCommandResult = { matchedFittings: [], warnings: [] };
 
   const normalizedText = text.replace(/(\d+)\s*сн/g, "$1sn");
@@ -164,4 +167,5 @@ export function parseVoiceCommand(transcript: string, database: Database): Voice
 
   return result;
 }
+
 
