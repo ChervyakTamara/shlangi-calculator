@@ -16,6 +16,27 @@ import type {
 } from "@/lib/types";
 import { FITTING_TYPES, getFittingTypeLabel } from "@/lib/types";
 
+import { parseVoiceCommand, type VoiceCommandResult } from "@/lib/voice-command";
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: ArrayLike<{ 0: { transcript: string } }>;
+}
+
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+interface SpeechRecognitionConstructor { new(): SpeechRecognitionLike }
+
+
 const fieldClass =
   "w-full border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-neutral-500 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500";
 const labelClass = "text-xs font-medium uppercase tracking-wide text-neutral-500";
@@ -134,6 +155,13 @@ function FittingSection({
 }
 
 export default function Calculator() {
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const [voiceText, setVoiceText] = useState("");
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
+  const [voiceApplied, setVoiceApplied] = useState(false);
+  useEffect(() => () => { const recognition = recognitionRef.current; if (recognition) { recognition.onresult = null; recognition.onerror = null; recognition.onend = null; recognition.stop(); } }, []);
+
   const reportRef = useRef<HTMLDivElement>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [rvdData, setRvdData] = useState<RvdItem[]>([]);
@@ -189,6 +217,74 @@ export default function Calculator() {
 
     loadData();
   }, []);
+
+  async function startVoiceInput() {
+    setVoiceError("");
+    setVoiceApplied(false);
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    const SpeechRecognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setVoiceError("Голосовой ввод не поддерживается этим браузером. Открой калькулятор в Chrome или Edge.");
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = "ru-RU";
+      recognition.interimResults = true;
+      recognition.continuous = false;
+      recognition.onresult = (event) => {
+        const parts: string[] = [];
+        for (let index = event.resultIndex; index < event.results.length; index += 1) {
+          parts.push(event.results[index][0].transcript);
+        }
+        if (parts.length) setVoiceText(parts.join(" ").trim());
+      };
+      recognition.onerror = (event) => {
+        setVoiceError(event.error === "not-allowed"
+          ? "Разреши доступ к микрофону в настройках браузера."
+          : `Не удалось распознать речь (${event.error}). Попробуй ещё раз или введи текст вручную.`);
+      };
+      recognition.onend = () => setVoiceListening(false);
+      recognitionRef.current = recognition;
+      setVoiceListening(true);
+      recognition.start();
+    } catch {
+      setVoiceListening(false);
+      setVoiceError("Не удалось запустить микрофон. Проверь разрешение доступа и попробуй ещё раз.");
+    }
+  }
+
+  function applyVoiceCommand(parsed: VoiceCommandResult) {
+    if (parsed.rvdType) setRvdType(parsed.rvdType);
+    if (parsed.dn) setDn(parsed.dn);
+    if (parsed.length) setLength(parsed.length);
+    if (parsed.fitting1Type && parsed.fitting1Id) {
+      setFitting1Hemorrhoid(false);
+      setFitting1Type(parsed.fitting1Type);
+      setFitting1Id(parsed.fitting1Id);
+    }
+    if (parsed.fitting2Type && parsed.fitting2Id) {
+      setFitting2Hemorrhoid(false);
+      setFitting2Type(parsed.fitting2Type);
+      setFitting2Id(parsed.fitting2Id);
+    }
+    if (parsed.markupEnabled) {
+      setMarkupEnabled(true);
+      setDiscountEnabled(false);
+      if (parsed.adjustmentPercent) setAdjustmentPercent(parsed.adjustmentPercent);
+    }
+    setVoiceApplied(true);
+  }
+
+  const parsedVoice = useMemo(
+    () => voiceText.trim() ? parseVoiceCommand(voiceText, { rvd: rvdData, fittings }) : null,
+    [voiceText, rvdData, fittings],
+  );
+
 
   const dnNumber = Number.parseFloat(dn) || 0;
   const lengthNumber = Number.parseFloat(length.replace(",", ".")) || 0;
@@ -321,6 +417,57 @@ export default function Calculator() {
   return (
     <div className="mx-auto grid max-w-5xl gap-5 lg:grid-cols-[1fr_300px]">
       <div className="space-y-5">
+        <section className={sectionClass} aria-labelledby="voice-input-title">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 id="voice-input-title" className={sectionTitleClass}>Голосовой ввод</h2>
+              <p className="max-w-2xl text-sm text-neutral-600">
+                Скажи параметры целиком, затем проверь распознанный текст перед заполнением.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={voiceListening ? () => recognitionRef.current?.stop() : startVoiceInput}
+              className={`border px-4 py-2.5 text-sm font-medium transition ${voiceListening ? "border-red-700 bg-red-700 text-white hover:bg-red-800" : "border-neutral-800 bg-neutral-900 text-white hover:bg-neutral-800"}`}
+              aria-pressed={voiceListening}
+            >
+              {voiceListening ? "Остановить запись" : "🎙️ Диктовать"}
+            </button>
+          </div>
+          <textarea
+            aria-label="Распознанная диктовка параметров РВД"
+            value={voiceText}
+            onChange={(event) => { setVoiceText(event.target.value); setVoiceApplied(false); setVoiceError(""); }}
+            placeholder="Например: 2СН, DN 20, длина 1,2 метра, ДКОЛ 30 на 2 прямой с двух сторон, наценка 2 процента"
+            rows={2}
+            className="mt-4 w-full resize-y border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-500"
+          />
+          {voiceListening && <p className="mt-2 text-sm text-neutral-700" aria-live="polite">Слушаю… Говори параметры РВД.</p>}
+          {voiceError && <p role="alert" className="mt-2 text-sm text-red-700">{voiceError}</p>}
+          {parsedVoice && (
+            <div className="mt-3 space-y-2 text-sm">
+              <p className="text-neutral-700">
+                Распознано: {parsedVoice.rvdType || "тип не найден"}; DN {parsedVoice.dn || "—"}; длина {parsedVoice.length ? `${parsedVoice.length} м` : "—"}; фитинги {parsedVoice.matchedFittings.length ? parsedVoice.matchedFittings.join(" + ") : "не найдены"}
+                {parsedVoice.markupEnabled && parsedVoice.adjustmentPercent ? `; наценка ${parsedVoice.adjustmentPercent}%` : ""}.
+              </p>
+              {parsedVoice.warnings.length > 0 && (
+                <ul className="list-inside list-disc border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                  {parsedVoice.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                </ul>
+              )}
+              {voiceApplied && <p role="status" className="text-green-700">Поля заполнены. Проверь выбранные значения и итог.</p>}
+              <button
+                type="button"
+                onClick={() => applyVoiceCommand(parsedVoice)}
+                disabled={!parsedVoice.rvdType && !parsedVoice.dn && !parsedVoice.length && !parsedVoice.matchedFittings.length && !parsedVoice.markupEnabled}
+                className="border border-neutral-800 px-4 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Заполнить поля
+              </button>
+            </div>
+          )}
+        </section>
+
         <section className={sectionClass}>
           <h2 className={sectionTitleClass}>Параметры РВД</h2>
           <div className="grid gap-4 md:grid-cols-3">

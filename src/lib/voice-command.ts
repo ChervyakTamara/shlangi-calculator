@@ -1,0 +1,152 @@
+import type { FittingItem } from "./types";
+import type { FittingType } from "./types";
+import type { RvdItem } from "./types";
+type Database = { rvd: RvdItem[]; fittings: FittingItem[] };
+
+export interface VoiceCommandResult {
+  rvdType?: string;
+  dn?: string;
+  length?: string;
+  fitting1Type?: FittingType;
+  fitting1Id?: string;
+  fitting2Type?: FittingType;
+  fitting2Id?: string;
+  markupEnabled?: boolean;
+  adjustmentPercent?: string;
+  matchedFittings: string[];
+  warnings: string[];
+}
+
+const normalize = (value: string) => value
+  .toLocaleLowerCase("ru-RU")
+  .replace(/ё/g, "е")
+  .replace(/д\s*кол/g, "дкол")
+  .replace(/д\s*к\s*о\s*л/g, "дкол")
+  .replace(/д\s*к\s*о\s*с/g, "дкос")
+  .replace(/\bсн\b/g, "sn")
+  .replace(/\s+/g, " ")
+  .trim();
+
+const normalizedSize = (value: string) => value
+  .replace(/,/g, ".")
+  .replace(/[х×*]/gi, "x")
+  .replace(/\s*(?:на|x)\s*/gi, "x")
+  .replace(/\s+/g, "")
+  .replace(/\.0(?=x|$)/g, "");
+
+function fittingStandardAliases(standard: string): string[] {
+  const value = standard.toLocaleLowerCase("ru-RU").replace(/[^a-zа-яё0-9]/g, "");
+  const aliases: Record<string, string[]> = {
+    dkol: ["dkol", "дкол", "д кол", "д-коль"],
+    dkos: ["dkos", "дкос", "д кос"],
+    dk: ["dk", "дк", "д к"],
+  };
+  return [...new Set([value, ...(aliases[value] ?? [])])].sort((a, b) => b.length - a.length);
+}
+
+function fittingAngle(text: string, from: number, to: number): FittingType | undefined {
+  const nearby = text.slice(from, to);
+  const explicit = nearby.match(/(?:^|\s)(45|90)(?:\s*(?:градус(?:а|ов)?|град))?(?=$|\s)/);
+  if (explicit) return explicit[1] as FittingType;
+  if (/(?:прямой|прямое|прямая|прямые|ровный)/.test(nearby)) return "Г";
+  if (/(?:штуцер|штуцерный)/.test(nearby)) return "Ш";
+  return undefined;
+}
+
+function findFittingMatches(text: string, database: Database, dn: number): {
+  fittings: FittingItem[];
+  warnings: string[];
+} {
+  const warnings: string[] = [];
+  const found: FittingItem[] = [];
+  const standards = [...new Set(database.fittings.map((item) => item.standard))]
+    .flatMap((standard) => fittingStandardAliases(standard).map((alias) => ({ standard, alias })))
+    .sort((a, b) => b.alias.length - a.alias.length);
+
+  const mentions: { standard: string; match: RegExpMatchArray; start: number }[] = [];
+  for (const { standard, alias } of standards) {
+    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const expression = new RegExp(`${escaped}\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:на|x|х|×|\\*)\\s*(\\d+(?:[.,]\\d+)?)`, "giu");
+    for (const match of text.matchAll(expression)) {
+      const start = match.index ?? 0;
+      if (!mentions.some((item) => item.start === start)) mentions.push({ standard, match, start });
+    }
+  }
+  mentions.sort((a, b) => a.start - b.start);
+  for (let index = 0; index < mentions.length; index++) {
+      const { standard, match, start } = mentions[index];
+      const previous = mentions[index - 1];
+      const prefixStart = previous ? previous.start + previous.match[0].length : 0;
+      const type = fittingAngle(text, prefixStart, start);
+      if (!type) {
+        warnings.push(`Для фитинга ${standard} ${match[1]}×${match[2]} не распознал тип (прямой, 45° или 90°).`);
+        continue;
+      }
+      const spokenSize = normalizedSize(`${match[1]}x${match[2]}`);
+      const candidates = database.fittings.filter((item) =>
+        item.standard.toLocaleLowerCase("ru-RU").replace(/[^a-zа-яё0-9]/g, "") ===
+          standard.toLocaleLowerCase("ru-RU").replace(/[^a-zа-яё0-9]/g, "") &&
+        item.type === type && item.dn === dn && normalizedSize(item.size) === spokenSize,
+      );
+      if (candidates.length === 1) found.push(candidates[0]);
+      else if (candidates.length > 1) warnings.push(`Найдено несколько фитингов ${standard} ${match[1]}×${match[2]} для DN ${dn}; выбери точный вручную.`);
+      else warnings.push(`В базе нет фитинга ${standard} ${match[1]}×${match[2]} для DN ${dn}.`);
+  }
+
+  if (found.length > 2) warnings.push("Распознано больше двух фитингов; заполнены первые два по порядку диктовки.");
+  return { fittings: found.slice(0, 2), warnings: [...new Set(warnings)] };
+}
+
+export function parseVoiceCommand(transcript: string, database: Database): VoiceCommandResult {
+  const text = normalize(transcript);
+  const result: VoiceCommandResult = { matchedFittings: [], warnings: [] };
+
+  const normalizedText = text.replace(/(\d+)\s*сн/g, "$1sn");
+  const rvdTypes = [...new Set(database.rvd.map((item) => item.type))]
+    .sort((a, b) => b.length - a.length);
+  const selectedRvd = rvdTypes.find((type) => {
+    const key = normalize(type).replace(/[^a-zа-яё0-9]/g, "").replace(/сн/g, "sn");
+    return key.length > 1 && normalizedText.replace(/[^a-zа-яё0-9]/g, "").includes(key);
+  });
+  if (selectedRvd) result.rvdType = selectedRvd;
+  else result.warnings.push("Не удалось распознать тип РВД.");
+
+  const dnMatch = text.match(/(?:^|[\s,])(?:dn|дн|диаметр)\s*(\d+(?:[.,]\d+)?)/i);
+  if (dnMatch) result.dn = dnMatch[1].replace(",", ".");
+  else result.warnings.push("Не удалось распознать DN (например, «DN 20»).");
+
+  const lengthMatch = text.match(/(?:^|\s)длин(?:а|на|ну|е|ы)?\s*(?:равна\s*)?(\d+(?:[.,]\d+)?)/i)
+    ?? text.match(/\b(\d+(?:[.,]\d+)?)\s*(?:метр(?:а|ов)?|м\b)/i);
+  if (lengthMatch) {
+    const numeric = lengthMatch[1];
+    result.length = numeric.replace(",", ".");
+  } else result.warnings.push("Не удалось распознать длину в метрах.");
+
+  const percentMatch = text.match(/(?:наценк\w*|накрут\w*)[^\d]{0,16}(\d+(?:[.,]\d+)?)\s*(?:%|процент\w*)?/i);
+  if (percentMatch) {
+    result.markupEnabled = true;
+    result.adjustmentPercent = percentMatch[1].replace(",", ".");
+  }
+
+  const dnNumber = Number(result.dn);
+  if (Number.isFinite(dnNumber) && dnNumber > 0) {
+    const matching = findFittingMatches(text, database, dnNumber);
+    result.warnings.push(...matching.warnings);
+    const [first, second] = matching.fittings;
+    if (first) {
+      result.fitting1Type = first.type as FittingType;
+      result.fitting1Id = first.id;
+      result.matchedFittings.push(first.visible);
+    }
+    if (second) {
+      result.fitting2Type = second.type as FittingType;
+      result.fitting2Id = second.id;
+      result.matchedFittings.push(second.visible);
+    }
+    if (matching.fittings.length < 2 && !result.warnings.some((warning) => warning.includes("фитинг"))) {
+      result.warnings.push("Распознано меньше двух фитингов.");
+    }
+  }
+
+  return result;
+}
