@@ -130,7 +130,7 @@ export function parseVoiceCommand(transcript: string, database: Database): Voice
   if (dnMatch) result.dn = dnMatch[1].replace(",", ".");
   else result.warnings.push("Не удалось распознать DN (например, «DN 20»).");
 
-  const lengthMatch = text.match(/(?:^|\s)длин(?:а|на|ну|е|ы)?\s*(?:равна\s*)?(\d+(?:[.,]\d+)?)/i)
+  const lengthMatch = text.match(/(?:^|[\s,;])(?:длин(?:а|на|ну|е|ы)?|[lл])\s*(?:равна\s*|[=:]\s*)?(\d+(?:[.,]\d+)?)/i)
     ?? text.match(/\b(\d+(?:[.,]\d+)?)\s*(?:метр(?:а|ов)?|м\b)/i);
   if (lengthMatch) {
     const numeric = lengthMatch[1];
