@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   let image: unknown;
   try { image = (await request.json()).image; } catch { return reply("Некорректное фото.",400); }
   if (typeof image !== "string" || image.length > 3400000 || !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(image)) return reply("Выбери фото JPG, PNG или WebP.",400);
-  const token = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
+  const token = process.env.AI_GATEWAY_API_KEY || request.headers.get("x-vercel-oidc-token") || process.env.VERCEL_OIDC_TOKEN;
   if (!token) return reply("Сервис распознавания ещё не подключён. Можно ввести запись текстом ниже.",503);
   count.count++; requests.set(ip,count);
   try {
